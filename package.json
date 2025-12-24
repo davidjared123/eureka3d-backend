@@ -1,0 +1,31 @@
+{
+  "name": "eureka3d-backend",
+  "version": "1.0.0",
+  "description": "Backend para automatización de pedidos Eureka 3D - WhatsApp a Trello",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "mcp": "node src/mcp/server.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "trello",
+    "automation",
+    "3d-printing",
+    "mcp"
+  ],
+  "author": "Eureka 3D",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.2",
+    "chrono-node": "^2.7.0",
+    "dotenv": "^16.3.1",
+    "form-data": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,16 @@
+{
+    "mcpServers": {
+        "eureka3d": {
+            "command": "node",
+            "args": [
+                "/Users/davidperez/Documents/Proyectos Personales/Eureka3D/src/mcp/server.js"
+            ],
+            "env": {
+                "TRELLO_API_KEY": "${TRELLO_API_KEY}",
+                "TRELLO_TOKEN": "${TRELLO_TOKEN}",
+                "TRELLO_LIST_PEDIDOS_ID": "${TRELLO_LIST_PEDIDOS_ID}",
+                "TRELLO_LIST_EN_PROCESO_ID": "${TRELLO_LIST_EN_PROCESO_ID}"
+            }
+        }
+    }
+}

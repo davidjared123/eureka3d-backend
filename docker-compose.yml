@@ -1,0 +1,67 @@
+version: '3.9'
+
+services:
+  # ===========================================
+  # EVOLUTION API - WhatsApp Gateway
+  # ===========================================
+  evolution-api:
+    container_name: evolution_api
+    image: atendai/evolution-api:v2.2.3
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # API Key para autenticación
+      - AUTHENTICATION_API_KEY=tu_api_key_segura_aqui
+
+      # Configuración del servidor
+      - SERVER_URL=http://localhost:8080
+
+      # Webhook global (opcional)
+      - WEBHOOK_GLOBAL_ENABLED=false
+      - WEBHOOK_GLOBAL_URL=http://eureka3d:3000/webhook/evolution
+
+      # Configuración de instancia
+      - CONFIG_SESSION_PHONE_CLIENT=Eureka3D
+      - CONFIG_SESSION_PHONE_NAME=Chrome
+
+      # Logs
+      - LOG_LEVEL=INFO
+      - LOG_COLOR=true
+
+      # Database (SQLite por defecto para desarrollo)
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=sqlite
+      - DATABASE_CONNECTION_URI=file:./evolution.db
+
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - eureka_network
+
+  # ===========================================
+  # EUREKA 3D BACKEND
+  # ===========================================
+  eureka3d:
+    container_name: eureka3d_backend
+    build: .
+    restart: always
+    ports:
+      - "3000:8000"
+    env_file:
+      - .env
+    environment:
+      - PORT=8000
+      - EVOLUTION_API_URL=http://evolution-api:8080
+    depends_on:
+      - evolution-api
+    networks:
+      - eureka_network
+
+volumes:
+  evolution_instances:
+
+
+networks:
+  eureka_network:
+    driver: bridge
