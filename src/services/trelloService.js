@@ -244,6 +244,29 @@ export async function obtenerListasDelTablero(boardId) {
     }
 }
 
+/**
+ * Elimina una tarjeta de Trello (y todos sus adjuntos)
+ * @param {string} cardId - ID de la tarjeta a eliminar
+ * @returns {Promise<boolean>} true si se eliminó correctamente
+ */
+export async function eliminarTarjeta(cardId) {
+    try {
+        await trelloClient.delete(`/cards/${cardId}`);
+        console.log(`[TrelloService] Tarjeta ${cardId} eliminada`);
+        return true;
+    } catch (error) {
+        handleTrelloError(error, 'eliminarTarjeta');
+    }
+}
+
+/**
+ * Obtiene tarjetas completadas
+ * @returns {Promise<Array>} Tarjetas completadas
+ */
+export async function obtenerPedidosCompletados() {
+    return obtenerTarjetasDeLista(config.trello.lists.completados);
+}
+
 export default {
     crearTarjeta,
     adjuntarImagenDesdeUrl,
@@ -251,9 +274,11 @@ export default {
     obtenerTarjetasDeLista,
     obtenerPedidosPendientes,
     obtenerPedidosEnProceso,
+    obtenerPedidosCompletados,
     moverTarjeta,
     moverAEnProceso,
     moverACompletados,
+    eliminarTarjeta,
     obtenerTarjeta,
     obtenerListasDelTablero,
 };

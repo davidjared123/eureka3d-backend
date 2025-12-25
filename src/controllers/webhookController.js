@@ -6,33 +6,20 @@ import pedidoSession from '../services/pedidoSession.js';
 
 /**
  * Controlador conversacional para pedidos
+ * Flujo: Cualquier mensaje → ¿Iniciar pedido? → Agregar más → ¿Título? → Fecha → Trello
  */
 
 // ID del grupo permitido
 const GRUPO_PERMITIDO = process.env.WHATSAPP_GROUP_ID || null;
 
-// Comandos para iniciar pedido
-const COMANDOS_INICIO = [
-    'agendame',
-    'agéndame',
-    'agendar',
-    'nuevo pedido',
-    'añadir pedido',
-    'anadir pedido',
-    'añádelo al trello',
-    'anadelo al trello',
-    'crear pedido',
-    '#pedido',
-];
-
 // Comandos para confirmar
-const COMANDOS_CONFIRMAR = ['sí', 'si', 'yes', 'confirmar', 'dale', 'ok', 'listo'];
+const COMANDOS_CONFIRMAR = ['sí', 'si', 'yes', 'confirmar', 'dale', 'ok', 'listo', 's'];
 
-// Comandos para cancelar
-const COMANDOS_CANCELAR = ['no', 'cancelar', 'cancel', 'salir'];
+// Comandos para negar/cancelar
+const COMANDOS_NEGAR = ['no', 'cancelar', 'cancel', 'salir', 'n'];
 
-// Comandos para modificar pedidos existentes
-const PATRON_MODIFICAR = /^(al título|al titulo|en el pedido|pedido)\s+(.+?)\s*[,:]?\s*(añade|anade|agrega|pon|cambia)\s+(.+)$/i;
+// Comando para cambiar título
+const COMANDOS_OTRO = ['otro', 'otra', 'cambiar', 'diferente'];
 
 /**
  * Procesa un webhook de Evolution API con lógica conversacional
@@ -106,197 +93,215 @@ export async function handleEvolutionWebhook(req, res) {
 async function procesarMensaje({ chatId, texto, tieneImagen, message, instanceName, nombreUsuario }) {
     const textoLower = texto.toLowerCase().trim();
 
-    // Verificar si es comando de inicio
-    const esInicio = COMANDOS_INICIO.some(cmd => textoLower.includes(cmd));
+    // ============================================
+    // CASO ESPECIAL: Comando #info para consultas
+    // ============================================
+    if (textoLower.startsWith('#info')) {
+        const consulta = texto.replace(/#info/i, '').trim();
+        return await procesarConsultaInfo(consulta);
+    }
 
     // Verificar si hay sesión activa
     const sesionActiva = pedidoSession.obtenerSesion(chatId);
 
     // ============================================
-    // CASO 1: Iniciar nuevo pedido
+    // CASO 1: No hay sesión - Iniciar nueva
     // ============================================
-    if (esInicio) {
-        pedidoSession.iniciarSesion(chatId, nombreUsuario);
-
-        // Si el mensaje tiene más contenido además del comando, guardarlo
-        const contenidoExtra = texto.replace(/#pedido|agendame|agéndame|nuevo pedido/gi, '').trim();
-        if (contenidoExtra) {
-            pedidoSession.agregarDescripcion(chatId, contenidoExtra);
+    if (!sesionActiva) {
+        // Si no hay contenido, ignorar
+        if (!texto && !tieneImagen) {
+            return null;
         }
 
-        // Si tiene imagen, procesarla
+        // Crear sesión y guardar primer mensaje
+        pedidoSession.iniciarSesion(chatId, nombreUsuario);
+
+        if (texto) {
+            pedidoSession.agregarDescripcion(chatId, texto);
+        }
         if (tieneImagen) {
             await guardarImagen(chatId, message, instanceName);
         }
 
-        return `📝 *Nuevo pedido iniciado por ${nombreUsuario}*\n\n` +
-            `Envía la descripción del pedido. Puedes enviar:\n` +
-            `📄 Textos con los detalles\n` +
-            `📷 Fotos de referencia\n\n` +
-            `Cuando termines, escribe: *listo* o *confirmar*\n` +
-            `Para cancelar: *cancelar*`;
+        const sesion = pedidoSession.obtenerSesion(chatId);
+        return pedidoSession.generarPreguntaInicio(sesion);
     }
 
     // ============================================
-    // CASO 2: Hay sesión activa
+    // CASO 2: Hay sesión activa - Procesar según estado
     // ============================================
-    if (sesionActiva) {
-        return await procesarMensajeEnSesion(sesionActiva, {
-            chatId, texto, textoLower, tieneImagen, message, instanceName
-        });
-    }
-
-    // ============================================
-    // CASO 3: Modificar pedido existente
-    // ============================================
-    const matchModificar = texto.match(PATRON_MODIFICAR);
-    if (matchModificar) {
-        const tituloBuscar = matchModificar[2];
-        const modificacion = matchModificar[4];
-        return await modificarPedidoExistente(tituloBuscar, modificacion);
-    }
-
-    // No hay acción que tomar
-    return null;
+    return await procesarMensajeEnSesion(sesionActiva, {
+        chatId, texto, textoLower, tieneImagen, message, instanceName
+    });
 }
 
 /**
  * Procesa mensajes cuando hay una sesión activa
  */
 async function procesarMensajeEnSesion(sesion, { chatId, texto, textoLower, tieneImagen, message, instanceName }) {
-
-    // Verificar cancelación
-    if (COMANDOS_CANCELAR.some(cmd => textoLower === cmd)) {
-        pedidoSession.cancelarSesion(chatId);
-        return '❌ Pedido cancelado.';
-    }
+    const esConfirmar = COMANDOS_CONFIRMAR.some(cmd => textoLower === cmd);
+    const esNegar = COMANDOS_NEGAR.some(cmd => textoLower === cmd);
+    const esOtro = COMANDOS_OTRO.some(cmd => textoLower === cmd);
 
     // ============================================
-    // Estado: ESPERANDO_CONFIRMACION
+    // Estado: ESPERANDO_INICIO - ¿Iniciar pedido?
     // ============================================
-    if (sesion.estado === 'ESPERANDO_CONFIRMACION') {
-        if (COMANDOS_CONFIRMAR.some(cmd => textoLower.includes(cmd))) {
-            // Crear tarjeta en Trello
-            return await crearTarjetaDesdeSesion(chatId);
-        } else if (COMANDOS_CANCELAR.some(cmd => textoLower === cmd)) {
-            // Usuario dijo "no" - quiere modificar algo
+    if (sesion.estado === 'ESPERANDO_INICIO') {
+        if (esConfirmar) {
             pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_MAS_INFO' });
-            return '👍 Ok, ¿qué deseas modificar o agregar?';
-        } else {
-            // Asumir que quiere añadir más información
-            if (texto) pedidoSession.agregarDescripcion(chatId, texto);
-            if (tieneImagen) await guardarImagen(chatId, message, instanceName);
-
-            const sesionActualizada = pedidoSession.obtenerSesion(chatId);
-            return pedidoSession.generarResumen(sesionActualizada);
+            return '✅ *Pedido iniciado*\n\n¿Deseas añadir algo más? (sí/no)';
         }
+        if (esNegar) {
+            pedidoSession.cancelarSesion(chatId);
+            return '👍 Ok, mensaje ignorado.';
+        }
+        // Si envía más contenido, agregarlo y volver a preguntar
+        if (texto) pedidoSession.agregarDescripcion(chatId, texto);
+        if (tieneImagen) await guardarImagen(chatId, message, instanceName);
+        const sesionActualizada = pedidoSession.obtenerSesion(chatId);
+        return pedidoSession.generarPreguntaInicio(sesionActualizada);
     }
 
     // ============================================
-    // Estado: ESPERANDO_MAS_INFO
+    // Estado: ESPERANDO_MAS_INFO - ¿Agregar más?
     // ============================================
     if (sesion.estado === 'ESPERANDO_MAS_INFO') {
-        if (COMANDOS_CONFIRMAR.some(cmd => textoLower === cmd)) {
-            // Usuario quiere agregar más
-            pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_DESCRIPCION' });
-            return '📝 Perfecto, sigue enviando más detalles o imágenes.';
-        } else if (COMANDOS_CANCELAR.some(cmd => textoLower === cmd) || textoLower === 'no') {
-            // Usuario NO quiere agregar más - preguntar fecha si no tiene
-            if (!sesion.fechaEntrega) {
-                pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_FECHA' });
-                return '📅 ¿Para cuándo es la entrega?\n\n' +
-                    'Puedes escribir:\n' +
-                    '• *hoy*\n' +
-                    '• *mañana*\n' +
-                    '• *viernes*\n' +
-                    '• *30 de diciembre*\n' +
-                    '• *en 3 días*';
-            }
-            // Ya tiene fecha, mostrar resumen para confirmar
-            pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_CONFIRMACION' });
-            return pedidoSession.generarResumen(sesion);
-        } else {
-            // No entendió, asumir que está agregando más contenido
-            if (texto) pedidoSession.agregarDescripcion(chatId, texto);
-            if (tieneImagen) await guardarImagen(chatId, message, instanceName);
+        if (esConfirmar) {
+            pedidoSession.actualizarSesion(chatId, { estado: 'AGREGANDO_INFO' });
+            return '📝 Perfecto, envía más detalles o imágenes.';
+        }
+        if (esNegar) {
+            // No quiere agregar más - preguntar por título
+            pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_TITULO' });
             const sesionActualizada = pedidoSession.obtenerSesion(chatId);
-            return pedidoSession.generarPreguntaMasInfo(sesionActualizada);
+            return pedidoSession.generarPreguntaTitulo(sesionActualizada);
         }
+        // Asumir que está agregando contenido
+        if (texto) pedidoSession.agregarDescripcion(chatId, texto);
+        if (tieneImagen) await guardarImagen(chatId, message, instanceName);
+        const sesionActualizada = pedidoSession.obtenerSesion(chatId);
+        return pedidoSession.generarPreguntaMasInfo(sesionActualizada);
     }
 
     // ============================================
-    // Estado: ESPERANDO_DESCRIPCION
+    // Estado: AGREGANDO_INFO - Recibiendo contenido
     // ============================================
+    if (sesion.estado === 'AGREGANDO_INFO') {
+        // Guardar contenido
+        if (texto) pedidoSession.agregarDescripcion(chatId, texto);
+        if (tieneImagen) await guardarImagen(chatId, message, instanceName);
 
-    // Verificar si es comando de confirmación/listo
-    if (COMANDOS_CONFIRMAR.some(cmd => textoLower === cmd) || textoLower === 'listo') {
-        // Verificar si tenemos suficiente información
-        if (sesion.descripcion.length === 0 && sesion.imagenes.length === 0) {
-            return '⚠️ No has enviado ninguna descripción ni imagen. Envía los detalles del pedido.';
-        }
+        // Preguntar si quiere agregar más
+        pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_MAS_INFO' });
+        const sesionActualizada = pedidoSession.obtenerSesion(chatId);
+        return pedidoSession.generarPreguntaMasInfo(sesionActualizada);
+    }
 
-        // Preguntar por fecha si no la tiene
-        if (!sesion.fechaEntrega) {
+    // ============================================
+    // Estado: ESPERANDO_TITULO - ¿Título actual u otro?
+    // ============================================
+    if (sesion.estado === 'ESPERANDO_TITULO') {
+        if (esConfirmar) {
+            // Usar título actual y preguntar fecha
+            const tituloActual = sesion.titulo || sesion.descripcion[0]?.substring(0, 50) || 'Nuevo pedido';
+            pedidoSession.establecerTitulo(chatId, tituloActual);
             pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_FECHA' });
-            return '📅 ¿Para cuándo es la entrega?\n\n' +
-                'Puedes escribir:\n' +
-                '• *hoy*\n' +
-                '• *mañana*\n' +
-                '• *viernes*\n' +
-                '• *30 de diciembre*\n' +
-                '• *en 3 días*';
+            return '📅 *¿Para cuándo es la entrega?*\n\nEjemplos: *mañana*, *viernes*, *30 de diciembre*';
         }
-
-        // Mostrar resumen para confirmar
-        pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_CONFIRMACION' });
-        return pedidoSession.generarResumen(sesion);
+        if (esOtro) {
+            pedidoSession.actualizarSesion(chatId, { estado: 'ESCRIBIENDO_TITULO' });
+            return '✏️ Escribe el título que quieres para este pedido:';
+        }
+        // No entendió
+        return '❓ Responde *sí* para usar el título actual, o *otro* para cambiarlo.';
     }
 
     // ============================================
-    // Estado: ESPERANDO_FECHA
+    // Estado: ESCRIBIENDO_TITULO - Usuario escribe nuevo título
+    // ============================================
+    if (sesion.estado === 'ESCRIBIENDO_TITULO') {
+        if (texto) {
+            pedidoSession.establecerTitulo(chatId, texto.substring(0, 100));
+            pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_FECHA' });
+            return `✅ Título: *"${texto.substring(0, 100)}"*\n\n📅 *¿Para cuándo es la entrega?*\n\nEjemplos: *mañana*, *viernes*, *30 de diciembre*`;
+        }
+        return '✏️ Escribe el título del pedido:';
+    }
+
+    // ============================================
+    // Estado: ESPERANDO_FECHA - Usuario da fecha de entrega
     // ============================================
     if (sesion.estado === 'ESPERANDO_FECHA') {
         const fecha = extraerFecha(texto);
         if (fecha) {
             pedidoSession.establecerFecha(chatId, fecha, texto);
-            const sesionActualizada = pedidoSession.obtenerSesion(chatId);
-            return pedidoSession.generarResumen(sesionActualizada);
+            // Crear tarjeta directamente
+            return await crearTarjetaDesdeSesion(chatId);
         } else {
-            return '❓ No entendí la fecha. Intenta con:\n' +
-                '• *hoy*, *mañana*\n' +
-                '• *viernes*, *lunes*\n' +
-                '• *25 de diciembre*';
+            return '❓ No entendí la fecha. Intenta con:\n• *hoy*, *mañana*\n• *viernes*, *lunes*\n• *25 de diciembre*';
         }
     }
 
-    // ============================================
-    // Acumular contenido (estado normal: ESPERANDO_DESCRIPCION)
-    // ============================================
+    // Estado no manejado
+    return null;
+}
 
-    // Verificar si el texto contiene una fecha
-    const posibleFecha = extraerFecha(texto);
-    if (posibleFecha) {
-        pedidoSession.establecerFecha(chatId, posibleFecha, texto);
+/**
+ * Procesa consultas #info
+ */
+async function procesarConsultaInfo(consulta) {
+    try {
+        const consultaLower = consulta.toLowerCase();
+        let tarjetas = [];
+        let titulo = '';
+
+        if (consultaLower.includes('hoy')) {
+            tarjetas = await trelloService.obtenerPedidosPendientes();
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            const manana = new Date(hoy);
+            manana.setDate(manana.getDate() + 1);
+
+            tarjetas = tarjetas.filter(t => {
+                if (!t.due) return false;
+                const due = new Date(t.due);
+                return due >= hoy && due < manana;
+            });
+            titulo = '📋 *Pedidos para HOY*';
+        } else if (consultaLower.includes('semana')) {
+            tarjetas = await trelloService.obtenerPedidosPendientes();
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            const finSemana = new Date(hoy);
+            finSemana.setDate(finSemana.getDate() + 7);
+
+            tarjetas = tarjetas.filter(t => {
+                if (!t.due) return false;
+                const due = new Date(t.due);
+                return due >= hoy && due < finSemana;
+            });
+            titulo = '📋 *Pedidos para esta SEMANA*';
+        } else {
+            // Todos los pendientes
+            tarjetas = await trelloService.obtenerPedidosPendientes();
+            titulo = '📋 *Todos los pedidos pendientes*';
+        }
+
+        if (tarjetas.length === 0) {
+            return `${titulo}\n\n✨ No hay pedidos pendientes.`;
+        }
+
+        const lista = tarjetas.map((t, i) => {
+            const fecha = t.due ? formatearFecha(new Date(t.due)) : 'Sin fecha';
+            return `${i + 1}. *${t.name}*\n   📅 ${fecha}`;
+        }).join('\n\n');
+
+        return `${titulo}\n\n${lista}\n\n_Total: ${tarjetas.length} pedido(s)_`;
+
+    } catch (error) {
+        console.error('[Webhook] Error en consulta:', error.message);
+        return `❌ Error consultando pedidos: ${error.message}`;
     }
-
-    // Guardar texto
-    if (texto && !COMANDOS_CONFIRMAR.includes(textoLower)) {
-        pedidoSession.agregarDescripcion(chatId, texto);
-    }
-
-    // Guardar imagen
-    if (tieneImagen) {
-        await guardarImagen(chatId, message, instanceName);
-    }
-
-    // Después de recibir contenido, preguntar si quiere agregar más
-    const sesionActualizada = pedidoSession.obtenerSesion(chatId);
-    if (sesionActualizada && (texto || tieneImagen)) {
-        pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_MAS_INFO' });
-        return pedidoSession.generarPreguntaMasInfo(sesionActualizada);
-    }
-
-    return null; // No responder si no hay contenido
 }
 
 /**
@@ -369,47 +374,14 @@ async function crearTarjetaDesdeSesion(chatId) {
 
         const fechaTexto = sesion.fechaEntrega ? formatearFecha(sesion.fechaEntrega) : 'sin fecha';
 
-        return `✅ *Pedido creado exitosamente*\n\n` +
+        return `✅ *Pedido subido a Trello*\n\n` +
             `📋 *Título:* ${sesion.titulo}\n` +
             `📅 *Entrega:* ${fechaTexto}\n` +
-            `📷 *Imágenes:* ${sesion.imagenes.length}\n\n` +
-            `La tarjeta ya está en Trello.`;
+            `📷 *Imágenes:* ${sesion.imagenes.length}`;
 
     } catch (error) {
         console.error('[Webhook] Error creando tarjeta:', error.message);
         return `❌ Error creando el pedido: ${error.message}`;
-    }
-}
-
-/**
- * Modifica un pedido existente en Trello
- */
-async function modificarPedidoExistente(tituloBuscar, modificacion) {
-    try {
-        // Buscar tarjetas que coincidan con el título
-        const tarjetas = await trelloService.obtenerPedidosPendientes();
-        const tarjetaEncontrada = tarjetas.find(t =>
-            t.name.toLowerCase().includes(tituloBuscar.toLowerCase())
-        );
-
-        if (!tarjetaEncontrada) {
-            return `❌ No encontré un pedido con título "${tituloBuscar}".\n\n` +
-                `Pedidos actuales:\n` +
-                tarjetas.slice(0, 5).map(t => `• ${t.name}`).join('\n');
-        }
-
-        // Añadir la modificación a la descripción
-        const nuevaDesc = tarjetaEncontrada.desc + `\n\n**Actualización:** ${modificacion}`;
-
-        // TODO: Implementar actualización de tarjeta en trelloService
-        // Por ahora, informamos que se detectó
-        return `📝 Modificación detectada para "${tarjetaEncontrada.name}":\n` +
-            `"${modificacion}"\n\n` +
-            `(Funcionalidad de actualización próximamente)`;
-
-    } catch (error) {
-        console.error('[Webhook] Error modificando pedido:', error.message);
-        return `❌ Error buscando el pedido: ${error.message}`;
     }
 }
 

@@ -17,8 +17,10 @@ function crearSesionVacia(chatId, nombreUsuario) {
     return {
         chatId,
         nombreUsuario,
-        estado: 'ESPERANDO_DESCRIPCION', // Estados: ESPERANDO_DESCRIPCION, ESPERANDO_MAS_INFO, ESPERANDO_FECHA, ESPERANDO_CONFIRMACION
+        // Estados: ESPERANDO_INICIO, ESPERANDO_MAS_INFO, ESPERANDO_TITULO, ESCRIBIENDO_TITULO, ESPERANDO_FECHA
+        estado: 'ESPERANDO_INICIO',
         titulo: null,
+        primerMensaje: null, // Primer mensaje recibido
         descripcion: [],
         imagenes: [],
         fechaEntrega: null,
@@ -161,6 +163,22 @@ export function tieneSesionActiva(chatId) {
 }
 
 /**
+ * Genera pregunta inicial cuando llega un mensaje nuevo
+ */
+export function generarPreguntaInicio(sesion) {
+    const tipoContenido = sesion.imagenes.length > 0 ? '📷 imagen' : '📄 mensaje';
+    return `¿Iniciar pedido con esta ${tipoContenido}? (sí/no)`;
+}
+
+/**
+ * Genera pregunta para confirmar título
+ */
+export function generarPreguntaTitulo(sesion) {
+    const tituloActual = sesion.titulo || sesion.descripcion[0]?.substring(0, 50) || 'Nuevo pedido';
+    return `¿Subir a Trello con el título:\n*"${tituloActual}"*?\n\nResponde *sí* o *otro* para cambiarlo.`;
+}
+
+/**
  * Genera resumen del pedido para confirmación
  */
 export function generarResumen(sesion) {
@@ -174,8 +192,6 @@ export function generarResumen(sesion) {
         ``,
         `*Fecha de entrega:* ${sesion.fechaTexto || 'No especificada'}`,
         `*Imágenes:* ${sesion.imagenes.length} adjunta(s)`,
-        ``,
-        `¿*Subir pedido a Trello*? Responde *sí* o *no*`,
     ];
 
     return lineas.join('\n');
@@ -203,6 +219,8 @@ export default {
     finalizarSesion,
     cancelarSesion,
     tieneSesionActiva,
+    generarPreguntaInicio,
+    generarPreguntaTitulo,
     generarResumen,
     generarPreguntaMasInfo,
 };

@@ -3,6 +3,7 @@ import config, { validateConfig } from './config/index.js';
 import { handleEvolutionWebhook, webhookHealth } from './controllers/webhookController.js';
 import trelloService from './services/trelloService.js';
 import { calcularCostoPieza } from './utils/costCalculator.js';
+import cleanupService from './services/cleanupService.js';
 
 const app = express();
 
@@ -63,6 +64,16 @@ app.post('/api/mover/:cardId/proceso', async (req, res) => {
     }
 });
 
+// Endpoint manual de limpieza
+app.get('/api/cleanup', async (req, res) => {
+    try {
+        const resultado = await cleanupService.limpiarPedidosVencidos();
+        res.json({ success: true, ...resultado });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Start server
 const PORT = config.port;
 const validation = validateConfig();
@@ -73,6 +84,9 @@ if (!validation.isValid) {
 
 app.listen(PORT, () => {
     console.log(`🚀 Eureka 3D Backend corriendo en puerto ${PORT}`);
+
+    // Iniciar limpieza automática
+    cleanupService.iniciarLimpiezaAutomatica();
 });
 
 export default app;
