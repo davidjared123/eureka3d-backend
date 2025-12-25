@@ -17,7 +17,7 @@ function crearSesionVacia(chatId, nombreUsuario) {
     return {
         chatId,
         nombreUsuario,
-        estado: 'ESPERANDO_DESCRIPCION', // Estados: ESPERANDO_DESCRIPCION, ESPERANDO_FECHA, ESPERANDO_CONFIRMACION
+        estado: 'ESPERANDO_DESCRIPCION', // Estados: ESPERANDO_DESCRIPCION, ESPERANDO_MAS_INFO, ESPERANDO_FECHA, ESPERANDO_CONFIRMACION
         titulo: null,
         descripcion: [],
         imagenes: [],
@@ -175,10 +175,21 @@ export function generarResumen(sesion) {
         `*Fecha de entrega:* ${sesion.fechaTexto || 'No especificada'}`,
         `*Imágenes:* ${sesion.imagenes.length} adjunta(s)`,
         ``,
-        `¿Confirmas el pedido? Responde *sí* o *no*`,
+        `¿*Subir pedido a Trello*? Responde *sí* o *no*`,
     ];
 
     return lineas.join('\n');
+}
+
+/**
+ * Genera pregunta para agregar más información
+ */
+export function generarPreguntaMasInfo(sesion) {
+    const numMensajes = sesion.descripcion.length;
+    const numImagenes = sesion.imagenes.length;
+
+    return `✅ Recibido (${numMensajes} mensaje(s), ${numImagenes} imagen(es)).\n\n` +
+        `¿Deseas *agregar algo más*? (sí/no)`;
 }
 
 export default {
@@ -193,4 +204,5 @@ export default {
     cancelarSesion,
     tieneSesionActiva,
     generarResumen,
+    generarPreguntaMasInfo,
 };

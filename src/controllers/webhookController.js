@@ -178,6 +178,10 @@ async function procesarMensajeEnSesion(sesion, { chatId, texto, textoLower, tien
         if (COMANDOS_CONFIRMAR.some(cmd => textoLower.includes(cmd))) {
             // Crear tarjeta en Trello
             return await crearTarjetaDesdeSesion(chatId);
+        } else if (COMANDOS_CANCELAR.some(cmd => textoLower === cmd)) {
+            // Usuario dijo "no" - quiere modificar algo
+            pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_MAS_INFO' });
+            return '👍 Ok, ¿qué deseas modificar o agregar?';
         } else {
             // Asumir que quiere añadir más información
             if (texto) pedidoSession.agregarDescripcion(chatId, texto);
@@ -185,6 +189,38 @@ async function procesarMensajeEnSesion(sesion, { chatId, texto, textoLower, tien
 
             const sesionActualizada = pedidoSession.obtenerSesion(chatId);
             return pedidoSession.generarResumen(sesionActualizada);
+        }
+    }
+
+    // ============================================
+    // Estado: ESPERANDO_MAS_INFO
+    // ============================================
+    if (sesion.estado === 'ESPERANDO_MAS_INFO') {
+        if (COMANDOS_CONFIRMAR.some(cmd => textoLower === cmd)) {
+            // Usuario quiere agregar más
+            pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_DESCRIPCION' });
+            return '📝 Perfecto, sigue enviando más detalles o imágenes.';
+        } else if (COMANDOS_CANCELAR.some(cmd => textoLower === cmd) || textoLower === 'no') {
+            // Usuario NO quiere agregar más - preguntar fecha si no tiene
+            if (!sesion.fechaEntrega) {
+                pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_FECHA' });
+                return '📅 ¿Para cuándo es la entrega?\n\n' +
+                    'Puedes escribir:\n' +
+                    '• *hoy*\n' +
+                    '• *mañana*\n' +
+                    '• *viernes*\n' +
+                    '• *30 de diciembre*\n' +
+                    '• *en 3 días*';
+            }
+            // Ya tiene fecha, mostrar resumen para confirmar
+            pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_CONFIRMACION' });
+            return pedidoSession.generarResumen(sesion);
+        } else {
+            // No entendió, asumir que está agregando más contenido
+            if (texto) pedidoSession.agregarDescripcion(chatId, texto);
+            if (tieneImagen) await guardarImagen(chatId, message, instanceName);
+            const sesionActualizada = pedidoSession.obtenerSesion(chatId);
+            return pedidoSession.generarPreguntaMasInfo(sesionActualizada);
         }
     }
 
@@ -234,7 +270,7 @@ async function procesarMensajeEnSesion(sesion, { chatId, texto, textoLower, tien
     }
 
     // ============================================
-    // Acumular contenido (estado normal)
+    // Acumular contenido (estado normal: ESPERANDO_DESCRIPCION)
     // ============================================
 
     // Verificar si el texto contiene una fecha
@@ -251,10 +287,16 @@ async function procesarMensajeEnSesion(sesion, { chatId, texto, textoLower, tien
     // Guardar imagen
     if (tieneImagen) {
         await guardarImagen(chatId, message, instanceName);
-        return `📷 Imagen recibida (${sesion.imagenes.length + 1} en total). Sigue enviando o escribe *listo* para confirmar.`;
     }
 
-    return null; // No responder a cada mensaje de texto
+    // Después de recibir contenido, preguntar si quiere agregar más
+    const sesionActualizada = pedidoSession.obtenerSesion(chatId);
+    if (sesionActualizada && (texto || tieneImagen)) {
+        pedidoSession.actualizarSesion(chatId, { estado: 'ESPERANDO_MAS_INFO' });
+        return pedidoSession.generarPreguntaMasInfo(sesionActualizada);
+    }
+
+    return null; // No responder si no hay contenido
 }
 
 /**
