@@ -30,6 +30,8 @@ export async function handleEvolutionWebhook(req, res) {
     try {
         const payload = req.body;
 
+        console.log(`[Webhook] 📥 Event recibido: ${payload.event}`);
+
         // Solo procesamos mensajes recibidos
         if (payload.event !== 'messages.upsert') {
             return res.status(200).json({ processed: false, reason: 'No es mensaje' });
@@ -39,11 +41,13 @@ export async function handleEvolutionWebhook(req, res) {
         const instanceName = payload.instance;
 
         if (!message) {
+            console.log('[Webhook] ⚠️ Sin datos en el mensaje');
             return res.status(200).json({ processed: false, reason: 'Sin datos' });
         }
 
         // Ignorar mensajes propios y de status
         if (message.key?.fromMe || message.key?.remoteJid?.includes('status@broadcast')) {
+            console.log('[Webhook] ⏭️ Ignorando mensaje propio o status');
             return res.status(200).json({ processed: false, reason: 'Mensaje propio' });
         }
 
@@ -51,9 +55,11 @@ export async function handleEvolutionWebhook(req, res) {
         const nombreUsuario = message.pushName || 'Usuario';
 
         console.log(`[Webhook] 📩 Mensaje de: ${remoteJid} (${nombreUsuario})`);
+        console.log(`[Webhook] 🔑 GRUPO_PERMITIDO: ${GRUPO_PERMITIDO}`);
 
         // Filtrar solo mensajes del grupo permitido
         if (GRUPO_PERMITIDO && !remoteJid.includes(GRUPO_PERMITIDO)) {
+            console.log(`[Webhook] ❌ Mensaje ignorado - no es del grupo permitido`);
             return res.status(200).json({ processed: false, reason: 'No es del grupo' });
         }
 
@@ -61,7 +67,8 @@ export async function handleEvolutionWebhook(req, res) {
         const texto = extraerTextoMensaje(message);
         const tieneImagen = message.message?.imageMessage != null;
 
-        console.log(`[Webhook] Texto: "${texto.substring(0, 50)}..." | Imagen: ${tieneImagen}`);
+        console.log(`[Webhook] 📝 Texto: "${texto.substring(0, 100)}"`);
+        console.log(`[Webhook] 📷 Tiene imagen: ${tieneImagen}`);
 
         // Procesar el mensaje
         const respuesta = await procesarMensaje({
@@ -73,16 +80,23 @@ export async function handleEvolutionWebhook(req, res) {
             nombreUsuario,
         });
 
+        console.log(`[Webhook] 💬 Respuesta a enviar: "${respuesta ? respuesta.substring(0, 50) + '...' : 'null'}"`);
+
         // Enviar respuesta si hay
         if (respuesta) {
+            console.log(`[Webhook] 📤 Enviando respuesta a ${remoteJid}...`);
             await whatsappService.enviarMensaje(instanceName, remoteJid, respuesta);
+            console.log(`[Webhook] ✅ Respuesta enviada`);
+        } else {
+            console.log('[Webhook] ⚠️ No hay respuesta que enviar');
         }
 
         const processingTime = Date.now() - startTime;
         return res.status(200).json({ processed: true, processingTime });
 
     } catch (error) {
-        console.error('[Webhook] Error:', error.message);
+        console.error('[Webhook] ❌ Error:', error.message);
+        console.error('[Webhook] Stack:', error.stack);
         return res.status(200).json({ processed: false, error: error.message });
     }
 }
