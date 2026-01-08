@@ -45,13 +45,22 @@ export async function handleEvolutionWebhook(req, res) {
             return res.status(200).json({ processed: false, reason: 'Sin datos' });
         }
 
-        // Ignorar mensajes propios y de status
-        if (message.key?.fromMe || message.key?.remoteJid?.includes('status@broadcast')) {
-            console.log('[Webhook] ⏭️ Ignorando mensaje propio o status');
-            return res.status(200).json({ processed: false, reason: 'Mensaje propio' });
+        // Ignorar solo mensajes de status@broadcast
+        if (message.key?.remoteJid?.includes('status@broadcast')) {
+            console.log('[Webhook] ⏭️ Ignorando mensaje de status');
+            return res.status(200).json({ processed: false, reason: 'Status broadcast' });
         }
 
         const remoteJid = message.key?.remoteJid || '';
+        const esDelGrupoPermitido = GRUPO_PERMITIDO && remoteJid.includes(GRUPO_PERMITIDO);
+
+        // Ignorar mensajes propios SOLO si no son del grupo permitido
+        // Esto permite que el bot procese mensajes enviados desde el mismo número al grupo
+        if (message.key?.fromMe && !esDelGrupoPermitido) {
+            console.log('[Webhook] ⏭️ Ignorando mensaje propio fuera del grupo');
+            return res.status(200).json({ processed: false, reason: 'Mensaje propio' });
+        }
+
         const nombreUsuario = message.pushName || 'Usuario';
 
         console.log(`[Webhook] 📩 Mensaje de: ${remoteJid} (${nombreUsuario})`);
