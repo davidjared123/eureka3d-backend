@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import styles from './conexion.module.css';
@@ -9,6 +9,7 @@ export default function ConexionPage() {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
     const [tenant, setTenant] = useState(null);
     const [user, setUser] = useState(null);
 
@@ -22,6 +23,9 @@ export default function ConexionPage() {
     const [qrCode, setQrCode] = useState('');
     const [whatsappStatus, setWhatsappStatus] = useState('disconnected');
     const [groupName, setGroupName] = useState('Pedidos Eureka3D');
+    const [existingGroups, setExistingGroups] = useState([]);
+    const [selectedGroup, setSelectedGroup] = useState(null);
+    const [showGroupOptions, setShowGroupOptions] = useState(false);
 
     const router = useRouter();
     const supabase = createClient();
@@ -50,12 +54,14 @@ export default function ConexionPage() {
             setTrelloToken(existingTenant.trello_token || '');
             setTrelloBoardId(existingTenant.trello_board_id || '');
             setTrelloListId(existingTenant.trello_list_pedidos_id || '');
+            setGroupName(existingTenant.whatsapp_group_name || 'Pedidos Eureka3D');
 
             if (existingTenant.trello_api_key) {
                 setStep(2);
             }
             if (existingTenant.whatsapp_connected) {
                 setWhatsappStatus('connected');
+                setStep(3);
             }
         }
     };
@@ -91,6 +97,8 @@ export default function ConexionPage() {
                 setTenant(data);
             }
 
+            setSuccess('✅ Configuración de Trello guardada');
+            setTimeout(() => setSuccess(''), 3000);
             setStep(2);
         } catch (err) {
             setError(err.message || 'Error al guardar configuración');
@@ -99,24 +107,137 @@ export default function ConexionPage() {
         }
     };
 
+    // Crear instancia y obtener QR
     const connectWhatsApp = async () => {
         setLoading(true);
         setError('');
         setWhatsappStatus('connecting');
 
         try {
-            // Aquí iría la lógica para obtener el QR de Evolution API
-            // Por ahora simulamos
-            setQrCode('PLACEHOLDER_QR_CODE');
+            // 1. Crear/obtener instancia
+            const instanceRes = await fetch('/api/whatsapp/instance', { method: 'POST' });
+            const instanceData = await instanceRes.json();
 
-            // En producción, esto sería una llamada a Evolution API
-            // const response = await fetch('/api/whatsapp/connect', { method: 'POST' });
-            // const data = await response.json();
-            // setQrCode(data.qrCode);
+            if (!instanceRes.ok) {
+                throw new Error(instanceData.error || 'Error creando instancia');
+            }
+
+            // 2. Obtener QR
+            const qrRes = await fetch('/api/whatsapp/qr');
+            const qrData = await qrRes.json();
+
+            if (qrData.connected) {
+                setWhatsappStatus('connected');
+                await loadExistingGroups();
+                setShowGroupOptions(true);
+            } else if (qrData.qrcode) {
+                setQrCode(qrData.qrcode);
+                // Iniciar polling para verificar conexión
+                startConnectionPolling();
+            } else {
+                throw new Error(qrData.message || 'No se pudo obtener QR');
+            }
 
         } catch (err) {
             setError(err.message || 'Error al conectar WhatsApp');
             setWhatsappStatus('disconnected');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Polling para verificar si el usuario escaneó el QR
+    const startConnectionPolling = useCallback(() => {
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch('/api/whatsapp/instance');
+                const data = await res.json();
+
+                if (data.connected) {
+                    clearInterval(interval);
+                    setWhatsappStatus('connected');
+                    setQrCode('');
+                    await loadExistingGroups();
+                    setShowGroupOptions(true);
+                }
+            } catch (err) {
+                console.error('Error en polling:', err);
+            }
+        }, 3000); // Cada 3 segundos
+
+        // Limpiar después de 2 minutos
+        setTimeout(() => clearInterval(interval), 120000);
+
+        return () => clearInterval(interval);
+    }, []);
+
+    // Cargar grupos existentes
+    const loadExistingGroups = async () => {
+        try {
+            const res = await fetch('/api/whatsapp/group');
+            const data = await res.json();
+            if (data.groups) {
+                setExistingGroups(data.groups);
+            }
+        } catch (err) {
+            console.error('Error cargando grupos:', err);
+        }
+    };
+
+    // Crear nuevo grupo
+    const createGroup = async () => {
+        setLoading(true);
+        setError('');
+
+        try {
+            const res = await fetch('/api/whatsapp/group', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ groupName }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Error creando grupo');
+            }
+
+            setSuccess(`✅ Grupo "${groupName}" creado con ID: ${data.groupId}`);
+            setStep(3);
+
+        } catch (err) {
+            setError(err.message || 'Error al crear grupo');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Seleccionar grupo existente
+    const selectGroup = async (group) => {
+        setLoading(true);
+        setError('');
+
+        try {
+            const res = await fetch('/api/whatsapp/group', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    groupId: group.fullId || group.id,
+                    groupName: group.name,
+                }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Error seleccionando grupo');
+            }
+
+            setSuccess(`✅ Grupo "${group.name}" seleccionado`);
+            setStep(3);
+
+        } catch (err) {
+            setError(err.message || 'Error al seleccionar grupo');
         } finally {
             setLoading(false);
         }
@@ -153,6 +274,7 @@ export default function ConexionPage() {
             </div>
 
             {error && <div className={styles.error}>{error}</div>}
+            {success && <div className={styles.success}>{success}</div>}
 
             {/* Step 1: Trello */}
             {step === 1 && (
@@ -253,68 +375,101 @@ export default function ConexionPage() {
                         <span className={styles.cardIcon}>💬</span>
                         <div>
                             <h2>Conectar WhatsApp</h2>
-                            <p>Escanea el código QR con tu WhatsApp</p>
+                            <p>Vincula tu WhatsApp para recibir pedidos</p>
                         </div>
                     </div>
 
+                    {/* Estado: Sin conectar */}
                     {whatsappStatus === 'disconnected' && (
                         <div className={styles.whatsappConnect}>
-                            <p>Haz click en el botón para generar el código QR</p>
+                            <p>Haz click para generar el código QR y vincular WhatsApp</p>
                             <button
                                 onClick={connectWhatsApp}
                                 className="btn btn-primary btn-lg"
                                 disabled={loading}
                             >
-                                {loading ? <span className="spinner"></span> : 'Generar Código QR'}
+                                {loading ? <span className="spinner"></span> : '📱 Conectar WhatsApp'}
                             </button>
                         </div>
                     )}
 
+                    {/* Estado: Mostrando QR */}
                     {whatsappStatus === 'connecting' && qrCode && (
                         <div className={styles.qrContainer}>
                             <div className={styles.qrCode}>
-                                {/* En producción, aquí iría el QR real */}
-                                <div className={styles.qrPlaceholder}>
-                                    <span>📱</span>
-                                    <p>QR Code</p>
-                                    <small>Escanea con WhatsApp</small>
-                                </div>
+                                <img
+                                    src={qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`}
+                                    alt="WhatsApp QR Code"
+                                    style={{ width: 250, height: 250, borderRadius: 8 }}
+                                />
                             </div>
                             <div className={styles.qrInstructions}>
                                 <h4>Instrucciones:</h4>
                                 <ol>
                                     <li>Abre WhatsApp en tu teléfono</li>
-                                    <li>Toca Menú o Configuración</li>
-                                    <li>Selecciona "Dispositivos vinculados"</li>
-                                    <li>Toca "Vincular un dispositivo"</li>
+                                    <li>Toca <strong>Menú</strong> o <strong>Configuración</strong></li>
+                                    <li>Selecciona <strong>"Dispositivos vinculados"</strong></li>
+                                    <li>Toca <strong>"Vincular un dispositivo"</strong></li>
                                     <li>Escanea este código</li>
                                 </ol>
+                                <p className={styles.waiting}>
+                                    <span className="spinner"></span> Esperando escaneo...
+                                </p>
                             </div>
                         </div>
                     )}
 
-                    {whatsappStatus === 'connected' && (
-                        <div className={styles.connected}>
-                            <span className={styles.connectedIcon}>✅</span>
-                            <h3>¡WhatsApp Conectado!</h3>
-                            <p>Tu número está vinculado correctamente</p>
-
-                            <div className={styles.groupConfig}>
-                                <label className="form-label">Nombre del grupo de pedidos:</label>
-                                <input
-                                    type="text"
-                                    className="form-input"
-                                    value={groupName}
-                                    onChange={(e) => setGroupName(e.target.value)}
-                                />
+                    {/* Estado: Conectado - Seleccionar/crear grupo */}
+                    {whatsappStatus === 'connected' && showGroupOptions && (
+                        <div className={styles.groupSelection}>
+                            <div className={styles.connectedBadge}>
+                                <span>✅</span> WhatsApp Conectado
                             </div>
 
-                            <button
-                                onClick={() => setStep(3)}
-                                className="btn btn-primary btn-lg"
-                            >
-                                Continuar →
-                            </button>
+                            <h3>Configura el grupo de pedidos</h3>
+                            <p>Puedes crear un nuevo grupo o seleccionar uno existente</p>
+
+                            {/* Crear nuevo grupo */}
+                            <div className={styles.createGroupSection}>
+                                <h4>Crear nuevo grupo</h4>
+                                <div className={styles.createGroupForm}>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="Nombre del grupo (ej: Pedidos 3D)"
+                                        value={groupName}
+                                        onChange={(e) => setGroupName(e.target.value)}
+                                    />
+                                    <button
+                                        onClick={createGroup}
+                                        className="btn btn-primary"
+                                        disabled={loading || !groupName}
+                                    >
+                                        {loading ? <span className="spinner"></span> : '+ Crear Grupo'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Seleccionar grupo existente */}
+                            {existingGroups.length > 0 && (
+                                <div className={styles.existingGroupsSection}>
+                                    <h4>O selecciona un grupo existente</h4>
+                                    <div className={styles.groupList}>
+                                        {existingGroups.map((group) => (
+                                            <button
+                                                key={group.id}
+                                                className={styles.groupItem}
+                                                onClick={() => selectGroup(group)}
+                                                disabled={loading}
+                                            >
+                                                <span className={styles.groupIcon}>👥</span>
+                                                <span className={styles.groupName}>{group.name}</span>
+                                                <span className={styles.groupArrow}>→</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -347,8 +502,17 @@ export default function ConexionPage() {
                             </div>
                             <div className={styles.summaryItem}>
                                 <span>✅</span>
-                                <span>Grupo: {groupName}</span>
+                                <span>Grupo: {tenant?.whatsapp_group_name || groupName}</span>
                             </div>
+                        </div>
+
+                        <div className={styles.nextSteps}>
+                            <h4>Próximos pasos:</h4>
+                            <ol>
+                                <li>Envía un mensaje al grupo para probar</li>
+                                <li>El bot responderá y creará tarjetas en Trello</li>
+                                <li>Usa <code>#info</code> para ver pedidos pendientes</li>
+                            </ol>
                         </div>
 
                         <a href="/dashboard" className="btn btn-primary btn-lg">
