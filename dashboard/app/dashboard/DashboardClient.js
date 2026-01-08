@@ -45,6 +45,10 @@ export default function DashboardClient({ user, tenant }) {
                         <span>⚙️</span>
                         Configuración
                     </a>
+                    <a href="/dashboard/ayuda" className={styles.navItem}>
+                        <span>❓</span>
+                        Ayuda
+                    </a>
                 </nav>
 
                 <div className={styles.sidebarFooter}>
