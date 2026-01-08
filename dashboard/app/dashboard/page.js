@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation';
 import styles from './dashboard.module.css';
 import DashboardClient from './DashboardClient';
 
+// Prevent static generation - this page needs runtime auth
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardPage() {
     const supabase = await createClient();
 
