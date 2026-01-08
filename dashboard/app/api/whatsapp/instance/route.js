@@ -39,20 +39,35 @@ export async function POST(request) {
             },
         });
 
+        if (!checkResponse.ok) {
+            const errorText = await checkResponse.text();
+            console.error('[API WhatsApp] Error fetching instances:', errorText);
+            throw new Error('Error conectando con Evolution API');
+        }
+
         const instances = await checkResponse.json();
-        const existingInstance = instances?.find?.(i => i.instance?.instanceName === instanceName);
+        console.log('[API WhatsApp] Instances found:', JSON.stringify(instances).substring(0, 200));
+
+        // Evolution API v2 format: instances are objects with 'name' field
+        const existingInstance = instances?.find?.(i =>
+            i.name === instanceName ||
+            i.instance?.instanceName === instanceName ||
+            i.instanceName === instanceName
+        );
 
         if (existingInstance) {
+            console.log('[API WhatsApp] Found existing instance:', instanceName);
             // Retornar info de la instancia existente
             return NextResponse.json({
                 success: true,
                 instanceName,
                 exists: true,
-                status: existingInstance.instance?.status || 'unknown',
+                status: existingInstance.connectionStatus || existingInstance.instance?.status || 'unknown',
             });
         }
 
         // Crear nueva instancia
+        console.log('[API WhatsApp] Creating new instance:', instanceName);
         const createResponse = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
             method: 'POST',
             headers: {
@@ -66,10 +81,19 @@ export async function POST(request) {
             }),
         });
 
-        const createData = await createResponse.json();
+        const createText = await createResponse.text();
+        console.log('[API WhatsApp] Create response:', createResponse.status, createText.substring(0, 300));
+
+        let createData;
+        try {
+            createData = JSON.parse(createText);
+        } catch (e) {
+            throw new Error(`Error parseando respuesta: ${createText.substring(0, 100)}`);
+        }
 
         if (!createResponse.ok) {
-            throw new Error(createData.message || 'Error creando instancia');
+            console.error('[API WhatsApp] Create error:', createData);
+            throw new Error(createData.message || createData.error || 'Error creando instancia en Evolution');
         }
 
         // Guardar nombre de instancia en tenant
@@ -78,11 +102,13 @@ export async function POST(request) {
             .update({ evolution_instance_name: instanceName })
             .eq('id', tenant.id);
 
+        console.log('[API WhatsApp] Instance created, saved to tenant');
+
         return NextResponse.json({
             success: true,
             instanceName,
             exists: false,
-            qrcode: createData.qrcode,
+            qrcode: createData.qrcode || createData.base64,
         });
 
     } catch (error) {
