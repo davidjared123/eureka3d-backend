@@ -426,34 +426,36 @@ export default function ConexionPage() {
                                 <span>✅</span> WhatsApp Conectado
                             </div>
 
-                            <h3>Configura el grupo de pedidos</h3>
-                            <p>Puedes crear un nuevo grupo o seleccionar uno existente</p>
+                            <h3>Selecciona el grupo de pedidos</h3>
+                            <p>El bot escuchará los mensajes del grupo que elijas</p>
 
-                            {/* Crear nuevo grupo */}
+                            {/* Instrucciones para crear grupo */}
                             <div className={styles.createGroupSection}>
-                                <h4>Crear nuevo grupo</h4>
-                                <div className={styles.createGroupForm}>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        placeholder="Nombre del grupo (ej: Pedidos 3D)"
-                                        value={groupName}
-                                        onChange={(e) => setGroupName(e.target.value)}
-                                    />
-                                    <button
-                                        onClick={createGroup}
-                                        className="btn btn-primary"
-                                        disabled={loading || !groupName}
-                                    >
-                                        {loading ? <span className="spinner"></span> : '+ Crear Grupo'}
-                                    </button>
-                                </div>
+                                <h4>💡 ¿No tienes un grupo?</h4>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)', marginBottom: 'var(--space-md)' }}>
+                                    Crea uno manualmente en WhatsApp:
+                                </p>
+                                <ol style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)', paddingLeft: 'var(--space-lg)' }}>
+                                    <li>Abre WhatsApp en tu teléfono</li>
+                                    <li>Toca el botón <strong>+</strong> → <strong>Nuevo grupo</strong></li>
+                                    <li>Agrega al menos 1 contacto (puede ser tu otro número o un familiar)</li>
+                                    <li>Nombra el grupo (ej: "Pedidos 3D")</li>
+                                    <li>Vuelve aquí y haz click en <strong>"Actualizar lista"</strong></li>
+                                </ol>
+                                <button
+                                    onClick={loadExistingGroups}
+                                    className="btn btn-secondary"
+                                    disabled={loading}
+                                    style={{ marginTop: 'var(--space-md)' }}
+                                >
+                                    {loading ? <span className="spinner"></span> : '🔄 Actualizar lista de grupos'}
+                                </button>
                             </div>
 
                             {/* Seleccionar grupo existente */}
-                            {existingGroups.length > 0 && (
+                            {existingGroups.length > 0 ? (
                                 <div className={styles.existingGroupsSection}>
-                                    <h4>O selecciona un grupo existente</h4>
+                                    <h4>Selecciona tu grupo de pedidos:</h4>
                                     <div className={styles.groupList}>
                                         {existingGroups.map((group) => (
                                             <button
@@ -468,6 +470,12 @@ export default function ConexionPage() {
                                             </button>
                                         ))}
                                     </div>
+                                </div>
+                            ) : (
+                                <div className={styles.existingGroupsSection}>
+                                    <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-lg)' }}>
+                                        No se encontraron grupos. Crea uno en WhatsApp y actualiza la lista.
+                                    </p>
                                 </div>
                             )}
                         </div>
