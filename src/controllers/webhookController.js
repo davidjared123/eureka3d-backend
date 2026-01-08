@@ -1,16 +1,22 @@
 import { extraerFecha, formatearFecha } from '../utils/dateParser.js';
 import trelloService from '../services/trelloService.js';
+import { TrelloServiceMultiTenant } from '../services/trelloServiceMultiTenant.js';
 import evolutionService from '../services/evolutionService.js';
 import whatsappService from '../services/whatsappService.js';
 import pedidoSession from '../services/pedidoSession.js';
+import supabaseService from '../services/supabaseService.js';
+import config from '../config/index.js';
 
 /**
  * Controlador conversacional para pedidos
- * Flujo: Cualquier mensaje → ¿Iniciar pedido? → Agregar más → ¿Título? → Fecha → Trello
+ * Soporta modo single-tenant (env vars) y multi-tenant (Supabase)
  */
 
-// ID del grupo permitido
+// ID del grupo permitido (solo para modo single-tenant)
 const GRUPO_PERMITIDO = process.env.WHATSAPP_GROUP_ID || null;
+
+// Cache de tenants para evitar consultas repetidas
+const tenantCache = new Map();
 
 // Comandos para confirmar
 const COMANDOS_CONFIRMAR = ['sí', 'si', 'yes', 'confirmar', 'dale', 'ok', 'listo', 's'];
@@ -52,24 +58,49 @@ export async function handleEvolutionWebhook(req, res) {
         }
 
         const remoteJid = message.key?.remoteJid || '';
-        const esDelGrupoPermitido = GRUPO_PERMITIDO && remoteJid.includes(GRUPO_PERMITIDO);
-
-        // Ignorar mensajes propios SOLO si no son del grupo permitido
-        // Esto permite que el bot procese mensajes enviados desde el mismo número al grupo
-        if (message.key?.fromMe && !esDelGrupoPermitido) {
-            console.log('[Webhook] ⏭️ Ignorando mensaje propio fuera del grupo');
-            return res.status(200).json({ processed: false, reason: 'Mensaje propio' });
-        }
-
         const nombreUsuario = message.pushName || 'Usuario';
 
         console.log(`[Webhook] 📩 Mensaje de: ${remoteJid} (${nombreUsuario})`);
-        console.log(`[Webhook] 🔑 GRUPO_PERMITIDO: ${GRUPO_PERMITIDO}`);
+        console.log(`[Webhook] 🔧 Multi-tenant: ${config.multiTenant}`);
 
-        // Filtrar solo mensajes del grupo permitido
-        if (GRUPO_PERMITIDO && !remoteJid.includes(GRUPO_PERMITIDO)) {
-            console.log(`[Webhook] ❌ Mensaje ignorado - no es del grupo permitido`);
-            return res.status(200).json({ processed: false, reason: 'No es del grupo' });
+        // ============================================
+        // MULTI-TENANT: Buscar tenant por grupo
+        // ============================================
+        let tenant = null;
+        let trelloServiceInstance = trelloService; // Default: servicio con env vars
+
+        if (config.multiTenant) {
+            // Modo multi-tenant: buscar configuración en Supabase
+            tenant = tenantCache.get(remoteJid) || await supabaseService.getTenantByGroupId(remoteJid);
+
+            if (tenant) {
+                tenantCache.set(remoteJid, tenant);
+                // Crear instancia de Trello con credenciales del tenant
+                trelloServiceInstance = new TrelloServiceMultiTenant(tenant);
+                console.log(`[Webhook] 👤 Tenant: ${tenant.business_name}`);
+            } else {
+                console.log(`[Webhook] ❌ No se encontró tenant para este grupo`);
+                return res.status(200).json({ processed: false, reason: 'Tenant no encontrado' });
+            }
+
+            // En multi-tenant, ignorar mensajes propios
+            if (message.key?.fromMe) {
+                console.log('[Webhook] ⏭️ Ignorando mensaje propio');
+                return res.status(200).json({ processed: false, reason: 'Mensaje propio' });
+            }
+        } else {
+            // Modo single-tenant: usar env vars
+            const esDelGrupoPermitido = GRUPO_PERMITIDO && remoteJid.includes(GRUPO_PERMITIDO);
+
+            if (message.key?.fromMe && !esDelGrupoPermitido) {
+                console.log('[Webhook] ⏭️ Ignorando mensaje propio fuera del grupo');
+                return res.status(200).json({ processed: false, reason: 'Mensaje propio' });
+            }
+
+            if (GRUPO_PERMITIDO && !remoteJid.includes(GRUPO_PERMITIDO)) {
+                console.log(`[Webhook] ❌ Mensaje ignorado - no es del grupo permitido`);
+                return res.status(200).json({ processed: false, reason: 'No es del grupo' });
+            }
         }
 
         // Extraer texto e info de imagen
@@ -87,6 +118,8 @@ export async function handleEvolutionWebhook(req, res) {
             message,
             instanceName,
             nombreUsuario,
+            tenant,
+            trelloServiceInstance,
         });
 
         console.log(`[Webhook] 💬 Respuesta a enviar: "${respuesta ? respuesta.substring(0, 50) + '...' : 'null'}"`);
@@ -113,7 +146,7 @@ export async function handleEvolutionWebhook(req, res) {
 /**
  * Lógica principal de procesamiento de mensajes
  */
-async function procesarMensaje({ chatId, texto, tieneImagen, message, instanceName, nombreUsuario }) {
+async function procesarMensaje({ chatId, texto, tieneImagen, message, instanceName, nombreUsuario, tenant, trelloServiceInstance }) {
     const textoLower = texto.toLowerCase().trim();
 
     // ============================================
@@ -121,7 +154,7 @@ async function procesarMensaje({ chatId, texto, tieneImagen, message, instanceNa
     // ============================================
     if (textoLower.startsWith('#info')) {
         const consulta = texto.replace(/#info/i, '').trim();
-        return await procesarConsultaInfo(consulta);
+        return await procesarConsultaInfo(consulta, trelloServiceInstance);
     }
 
     // Verificar si hay sesión activa
@@ -138,6 +171,8 @@ async function procesarMensaje({ chatId, texto, tieneImagen, message, instanceNa
 
         // Crear sesión y guardar primer mensaje
         pedidoSession.iniciarSesion(chatId, nombreUsuario);
+        // Guardar referencia al trelloService para usar después
+        pedidoSession.actualizarSesion(chatId, { trelloServiceInstance });
 
         if (texto) {
             pedidoSession.agregarDescripcion(chatId, texto);
@@ -154,14 +189,14 @@ async function procesarMensaje({ chatId, texto, tieneImagen, message, instanceNa
     // CASO 2: Hay sesión activa - Procesar según estado
     // ============================================
     return await procesarMensajeEnSesion(sesionActiva, {
-        chatId, texto, textoLower, tieneImagen, message, instanceName
+        chatId, texto, textoLower, tieneImagen, message, instanceName, trelloServiceInstance
     });
 }
 
 /**
  * Procesa mensajes cuando hay una sesión activa
  */
-async function procesarMensajeEnSesion(sesion, { chatId, texto, textoLower, tieneImagen, message, instanceName }) {
+async function procesarMensajeEnSesion(sesion, { chatId, texto, textoLower, tieneImagen, message, instanceName, trelloServiceInstance }) {
     const esConfirmar = COMANDOS_CONFIRMAR.some(cmd => textoLower === cmd);
     const esNegar = COMANDOS_NEGAR.some(cmd => textoLower === cmd);
     const esOtro = COMANDOS_OTRO.some(cmd => textoLower === cmd);
@@ -259,7 +294,7 @@ async function procesarMensajeEnSesion(sesion, { chatId, texto, textoLower, tien
         if (fecha) {
             pedidoSession.establecerFecha(chatId, fecha, texto);
             // Crear tarjeta directamente
-            return await crearTarjetaDesdeSesion(chatId);
+            return await crearTarjetaDesdeSesion(chatId, trelloServiceInstance);
         } else {
             return '❓ No entendí la fecha. Intenta con:\n• *hoy*, *mañana*\n• *viernes*, *lunes*\n• *25 de diciembre*';
         }
@@ -272,14 +307,14 @@ async function procesarMensajeEnSesion(sesion, { chatId, texto, textoLower, tien
 /**
  * Procesa consultas #info
  */
-async function procesarConsultaInfo(consulta) {
+async function procesarConsultaInfo(consulta, trelloSvc = trelloService) {
     try {
         const consultaLower = consulta.toLowerCase();
         let tarjetas = [];
         let titulo = '';
 
         if (consultaLower.includes('hoy')) {
-            tarjetas = await trelloService.obtenerPedidosPendientes();
+            tarjetas = await trelloSvc.obtenerPedidosPendientes();
             const hoy = new Date();
             hoy.setHours(0, 0, 0, 0);
             const manana = new Date(hoy);
@@ -292,7 +327,7 @@ async function procesarConsultaInfo(consulta) {
             });
             titulo = '📋 *Pedidos para HOY*';
         } else if (consultaLower.includes('semana')) {
-            tarjetas = await trelloService.obtenerPedidosPendientes();
+            tarjetas = await trelloSvc.obtenerPedidosPendientes();
             const hoy = new Date();
             hoy.setHours(0, 0, 0, 0);
             const finSemana = new Date(hoy);
@@ -306,7 +341,7 @@ async function procesarConsultaInfo(consulta) {
             titulo = '📋 *Pedidos para esta SEMANA*';
         } else {
             // Todos los pendientes
-            tarjetas = await trelloService.obtenerPedidosPendientes();
+            tarjetas = await trelloSvc.obtenerPedidosPendientes();
             titulo = '📋 *Todos los pedidos pendientes*';
         }
 
@@ -349,8 +384,11 @@ async function guardarImagen(chatId, message, instanceName) {
 /**
  * Crea la tarjeta en Trello desde una sesión
  */
-async function crearTarjetaDesdeSesion(chatId) {
+async function crearTarjetaDesdeSesion(chatId, trelloSvc = trelloService) {
     const sesion = pedidoSession.finalizarSesion(chatId);
+
+    // Usar el servicio guardado en la sesión si existe
+    const servicioTrello = sesion?.trelloServiceInstance || trelloSvc;
 
     if (!sesion) {
         return '❌ Error: No se encontró la sesión.';
@@ -370,7 +408,7 @@ async function crearTarjetaDesdeSesion(chatId) {
         ].join('\n');
 
         // Crear tarjeta
-        const tarjeta = await trelloService.crearTarjeta({
+        const tarjeta = await servicioTrello.crearTarjeta({
             name: sesion.titulo || 'Nuevo pedido',
             desc: descripcion,
             due: sesion.fechaEntrega?.toISOString() || null,
@@ -383,7 +421,7 @@ async function crearTarjetaDesdeSesion(chatId) {
             try {
                 const media = await evolutionService.descargarMediaPorKey(img.instanceName, img.message);
                 if (media?.buffer) {
-                    await trelloService.adjuntarImagenDesdeBuffer(
+                    await servicioTrello.adjuntarImagenDesdeBuffer(
                         tarjeta.id,
                         media.buffer,
                         media.filename,

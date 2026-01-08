@@ -35,6 +35,15 @@ export const config = {
     costoPorGramo: parseFloat(process.env.COSTO_POR_GRAMO) || 0.05,
     margenGanancia: parseFloat(process.env.MARGEN_GANANCIA) || 40,
   },
+
+  // Supabase (para multi-tenant)
+  supabase: {
+    url: process.env.SUPABASE_URL,
+    serviceKey: process.env.SUPABASE_SERVICE_KEY,
+  },
+
+  // Modo multi-tenant
+  multiTenant: process.env.MULTI_TENANT === 'true',
 };
 
 /**
