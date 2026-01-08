@@ -2,13 +2,21 @@ import { createClient } from '@supabase/supabase-js';
 import config from '../config/index.js';
 
 /**
- * Cliente de Supabase para el backend
+ * Cliente de Supabase para el backend (lazy initialization)
  * Se usa para leer configuraciones de tenants
+ * Solo se crea si MULTI_TENANT=true
  */
-const supabase = createClient(
-    config.supabase.url,
-    config.supabase.serviceKey // Usamos service key para acceso completo
-);
+let supabase = null;
+
+function getSupabaseClient() {
+    if (!supabase && config.supabase.url && config.supabase.serviceKey) {
+        supabase = createClient(
+            config.supabase.url,
+            config.supabase.serviceKey
+        );
+    }
+    return supabase;
+}
 
 /**
  * Busca un tenant por su whatsapp_group_id
@@ -16,6 +24,13 @@ const supabase = createClient(
  * @returns {Promise<Object|null>} Tenant o null si no existe
  */
 export async function getTenantByGroupId(groupId) {
+    const client = getSupabaseClient();
+
+    if (!client) {
+        console.log('[Supabase] Cliente no disponible (MULTI_TENANT deshabilitado)');
+        return null;
+    }
+
     try {
         // El groupId viene como "120363421458604106@g.us" o similar
         // Extraemos solo el número
@@ -23,7 +38,7 @@ export async function getTenantByGroupId(groupId) {
 
         console.log(`[Supabase] Buscando tenant para grupo: ${numericId}`);
 
-        const { data, error } = await supabase
+        const { data, error } = await client
             .from('tenants')
             .select('*')
             .or(`whatsapp_group_id.eq.${numericId},whatsapp_group_id.eq.${groupId}`)
@@ -52,8 +67,12 @@ export async function getTenantByGroupId(groupId) {
  * @param {boolean} connected - Estado de conexión
  */
 export async function updateWhatsAppStatus(tenantId, connected) {
+    const client = getSupabaseClient();
+
+    if (!client) return;
+
     try {
-        const { error } = await supabase
+        const { error } = await client
             .from('tenants')
             .update({ whatsapp_connected: connected })
             .eq('id', tenantId);
@@ -68,5 +87,5 @@ export async function updateWhatsAppStatus(tenantId, connected) {
 export default {
     getTenantByGroupId,
     updateWhatsAppStatus,
-    client: supabase,
+    getClient: getSupabaseClient,
 };
