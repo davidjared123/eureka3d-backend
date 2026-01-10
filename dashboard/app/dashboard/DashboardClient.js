@@ -1,14 +1,46 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import styles from './dashboard.module.css';
 
 export default function DashboardClient({ user, tenant }) {
     const [loading, setLoading] = useState(false);
+    const [orderStats, setOrderStats] = useState({ total: 0, today: 0, overdue: 0 });
     const router = useRouter();
     const supabase = createClient();
+
+    useEffect(() => {
+        if (tenant?.trello_api_key) {
+            fetchOrderStats();
+        }
+    }, [tenant]);
+
+    const fetchOrderStats = async () => {
+        try {
+            const res = await fetch('/api/trello/cards');
+            const data = await res.json();
+
+            if (data.cards) {
+                const today = new Date().toDateString();
+                const todayCount = data.cards.filter(c =>
+                    c.due && new Date(c.due).toDateString() === today
+                ).length;
+                const overdueCount = data.cards.filter(c =>
+                    c.due && new Date(c.due) < new Date()
+                ).length;
+
+                setOrderStats({
+                    total: data.cards.length,
+                    today: todayCount,
+                    overdue: overdueCount,
+                });
+            }
+        } catch (err) {
+            console.error('Error fetching stats:', err);
+        }
+    };
 
     const handleLogout = async () => {
         setLoading(true);
@@ -112,13 +144,31 @@ export default function DashboardClient({ user, tenant }) {
                         </div>
                     </div>
 
-                    <div className={styles.statusCard}>
+                    <a href="/dashboard/pedidos" className={styles.statusCard} style={{ textDecoration: 'none' }}>
                         <div className={styles.statusIcon}>📋</div>
                         <div className={styles.statusInfo}>
                             <span className={styles.statusLabel}>Pedidos hoy</span>
-                            <span className={styles.statusValue}>-</span>
+                            <span className={styles.statusValue}>{orderStats.today}</span>
                         </div>
-                    </div>
+                    </a>
+
+                    <a href="/dashboard/pedidos" className={styles.statusCard} style={{ textDecoration: 'none' }}>
+                        <div className={styles.statusIcon}>📦</div>
+                        <div className={styles.statusInfo}>
+                            <span className={styles.statusLabel}>Total pendientes</span>
+                            <span className={styles.statusValue}>{orderStats.total}</span>
+                        </div>
+                    </a>
+
+                    {orderStats.overdue > 0 && (
+                        <a href="/dashboard/pedidos" className={`${styles.statusCard} ${styles.danger}`} style={{ textDecoration: 'none' }}>
+                            <div className={styles.statusIcon}>⚠️</div>
+                            <div className={styles.statusInfo}>
+                                <span className={styles.statusLabel}>Vencidos</span>
+                                <span className={styles.statusValue}>{orderStats.overdue}</span>
+                            </div>
+                        </a>
+                    )}
                 </div>
 
                 {/* Setup Required */}
