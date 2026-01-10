@@ -96,6 +96,31 @@ export async function POST(request) {
             throw new Error(createData.message || createData.error || 'Error creando instancia en Evolution');
         }
 
+        // Configurar webhook para esta instancia
+        console.log('[API WhatsApp] Configuring webhook for instance:', instanceName);
+        const webhookUrl = process.env.NEXT_PUBLIC_API_URL || 'https://eureka3d-backend.onrender.com';
+
+        const webhookResponse = await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
+            method: 'POST',
+            headers: {
+                'apikey': EVOLUTION_API_KEY,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                webhook: {
+                    url: `${webhookUrl}/webhook/evolution`,
+                    enabled: true,
+                    events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE'],
+                }
+            }),
+        });
+
+        if (webhookResponse.ok) {
+            console.log('[API WhatsApp] Webhook configured successfully');
+        } else {
+            console.error('[API WhatsApp] Failed to configure webhook:', await webhookResponse.text());
+        }
+
         // Guardar nombre de instancia en tenant
         await supabase
             .from('tenants')
