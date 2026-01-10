@@ -41,6 +41,10 @@ export default function DashboardClient({ user, tenant }) {
                         <span>🔗</span>
                         Conexión
                     </a>
+                    <a href="/dashboard/trello" className={styles.navItem}>
+                        <span>📅</span>
+                        Trello
+                    </a>
                     <a href="/dashboard/configuracion" className={styles.navItem}>
                         <span>⚙️</span>
                         Configuración

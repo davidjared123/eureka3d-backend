@@ -472,11 +472,18 @@ async function crearTarjetaDesdeSesion(chatId, trelloSvc = trelloService) {
             `*Fecha:* ${new Date().toLocaleString('es-VE')}`,
         ].join('\n');
 
+        // Determinar la lista correcta según la fecha de entrega (multi-lista)
+        let listId = null;
+        if (sesion.fechaEntrega && typeof servicioTrello.getListIdForDate === 'function') {
+            listId = servicioTrello.getListIdForDate(sesion.fechaEntrega);
+        }
+
         // Crear tarjeta
         const tarjeta = await servicioTrello.crearTarjeta({
             name: sesion.titulo || 'Nuevo pedido',
             desc: descripcion,
             due: sesion.fechaEntrega?.toISOString() || null,
+            listId: listId,
         });
 
         console.log(`[Webhook] ✅ Tarjeta creada: ${tarjeta.id}`);

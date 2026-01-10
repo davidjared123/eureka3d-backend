@@ -18,6 +18,16 @@ CREATE TABLE IF NOT EXISTS tenants (
   trello_list_en_proceso_id TEXT,
   trello_list_completados_id TEXT,
   
+  -- Modo multi-lista (listas por día de la semana)
+  trello_multilist_enabled BOOLEAN DEFAULT FALSE,
+  trello_list_monday TEXT,
+  trello_list_tuesday TEXT,
+  trello_list_wednesday TEXT,
+  trello_list_thursday TEXT,
+  trello_list_friday TEXT,
+  trello_list_saturday TEXT,
+  trello_list_sunday TEXT,
+  
   -- Configuración WhatsApp/Evolution
   evolution_instance_name TEXT UNIQUE,
   whatsapp_group_id TEXT,
@@ -34,6 +44,14 @@ CREATE TABLE IF NOT EXISTS tenants (
 -- Migración: agregar nuevas columnas si la tabla ya existe
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS group_description TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trello_multilist_enabled BOOLEAN DEFAULT FALSE;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trello_list_monday TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trello_list_tuesday TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trello_list_wednesday TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trello_list_thursday TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trello_list_friday TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trello_list_saturday TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS trello_list_sunday TEXT;
 
 -- Índice para búsqueda por group_id (usado por el webhook)
 CREATE INDEX IF NOT EXISTS idx_tenants_whatsapp_group 

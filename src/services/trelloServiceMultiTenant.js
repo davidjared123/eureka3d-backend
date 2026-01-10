@@ -16,6 +16,18 @@ export class TrelloServiceMultiTenant {
         this.listEnProcesoId = tenant.trello_list_en_proceso_id;
         this.listCompletadosId = tenant.trello_list_completados_id;
 
+        // Multi-lista por día de la semana
+        this.multilistEnabled = tenant.trello_multilist_enabled || false;
+        this.dailyLists = {
+            0: tenant.trello_list_sunday,    // Domingo
+            1: tenant.trello_list_monday,    // Lunes
+            2: tenant.trello_list_tuesday,   // Martes
+            3: tenant.trello_list_wednesday, // Miércoles
+            4: tenant.trello_list_thursday,  // Jueves
+            5: tenant.trello_list_friday,    // Viernes
+            6: tenant.trello_list_saturday,  // Sábado
+        };
+
         this.client = axios.create({
             baseURL: TRELLO_BASE_URL,
             timeout: 30000,
@@ -24,6 +36,37 @@ export class TrelloServiceMultiTenant {
                 token: this.token,
             },
         });
+    }
+
+    /**
+     * Obtiene el ID de la lista según la fecha de entrega
+     * @param {Date|string} dueDate - Fecha de entrega
+     * @returns {string} ID de la lista
+     */
+    getListIdForDate(dueDate) {
+        if (!this.multilistEnabled) {
+            return this.listPedidosId;
+        }
+
+        let date;
+        if (dueDate instanceof Date) {
+            date = dueDate;
+        } else if (typeof dueDate === 'string') {
+            date = new Date(dueDate);
+        } else {
+            return this.listPedidosId;
+        }
+
+        const dayOfWeek = date.getDay(); // 0 = Domingo, 1 = Lunes, etc.
+        const listId = this.dailyLists[dayOfWeek];
+
+        if (listId) {
+            console.log(`[TrelloMT] Multi-lista: día ${dayOfWeek} -> lista ${listId}`);
+            return listId;
+        }
+
+        // Fallback a la lista principal si no hay lista para ese día
+        return this.listPedidosId;
     }
 
     /**
