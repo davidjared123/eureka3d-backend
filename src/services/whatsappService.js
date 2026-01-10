@@ -9,6 +9,9 @@ import { markMessageAsSent } from '../controllers/webhookController.js';
 const getBaseUrl = () => config.evolution.apiUrl;
 const getApiKey = () => config.evolution.apiKey;
 
+// Prefijo para identificar mensajes del bot
+const BOT_PREFIX = '🤖 BOT: ';
+
 /**
  * Envía un mensaje de texto a un chat
  * @param {string} instanceName - Nombre de la instancia
@@ -17,11 +20,14 @@ const getApiKey = () => config.evolution.apiKey;
  */
 export async function enviarMensaje(instanceName, chatId, texto) {
     try {
+        // Agregar prefijo de bot al mensaje
+        const textoConPrefijo = `${BOT_PREFIX}${texto}`;
+
         const response = await axios.post(
             `${getBaseUrl()}/message/sendText/${instanceName}`,
             {
                 number: chatId,
-                text: texto,
+                text: textoConPrefijo,
             },
             {
                 headers: {
