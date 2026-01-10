@@ -1,0 +1,213 @@
+.container {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: var(--space-xl);
+    min-height: 100vh;
+}
+
+.backBtn {
+    display: inline-block;
+    color: var(--text-muted);
+    text-decoration: none;
+    margin-bottom: var(--space-lg);
+    font-size: var(--font-size-sm);
+    transition: color var(--transition-fast);
+}
+
+.backBtn:hover {
+    color: var(--text-primary);
+}
+
+.header {
+    text-align: center;
+    margin-bottom: var(--space-2xl);
+}
+
+.header h1 {
+    margin-bottom: var(--space-sm);
+}
+
+.header p {
+    color: var(--text-muted);
+}
+
+/* Messages */
+.error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--accent-danger);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-md);
+    text-align: center;
+}
+
+.success {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: var(--accent-success);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-md);
+    text-align: center;
+}
+
+/* Sections */
+.section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-xl);
+    padding: var(--space-xl);
+    margin-bottom: var(--space-xl);
+}
+
+.section h2 {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--space-lg);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.sectionDesc {
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-lg);
+    margin-top: calc(var(--space-lg) * -1);
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+/* Avatar */
+.avatarSection {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+}
+
+.avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    border: 3px solid var(--border-primary);
+    transition: all var(--transition-fast);
+}
+
+.avatar:hover {
+    border-color: var(--accent-primary);
+}
+
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.avatarPlaceholder {
+    font-size: 2.5rem;
+}
+
+.avatarOverlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.avatar:hover .avatarOverlay {
+    opacity: 1;
+}
+
+.avatarHint {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    margin-top: var(--space-sm);
+}
+
+/* Description Editor */
+.descriptionEditor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.textarea {
+    width: 100%;
+    padding: var(--space-md);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-family: inherit;
+    color: var(--text-primary);
+    resize: vertical;
+    min-height: 200px;
+}
+
+.textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.descriptionActions {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: flex-end;
+}
+
+/* Info Grid */
+.infoGrid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.infoItem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-md);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+}
+
+.infoLabel {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+}
+
+.infoValue {
+    font-weight: 500;
+}
+
+.connected {
+    color: var(--accent-success);
+}
+
+.disconnected {
+    color: var(--accent-danger);
+}
+
+@media (max-width: 600px) {
+    .descriptionActions {
+        flex-direction: column;
+    }
+}

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE NOT NULL,
   business_name TEXT NOT NULL,
+  avatar_url TEXT,
   
   -- Configuración Trello
   trello_api_key TEXT,
@@ -23,11 +24,16 @@ CREATE TABLE IF NOT EXISTS tenants (
   whatsapp_group_name TEXT,
   whatsapp_connected BOOLEAN DEFAULT FALSE,
   whatsapp_number TEXT,
+  group_description TEXT,
   
   -- Metadata
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migración: agregar nuevas columnas si la tabla ya existe
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS group_description TEXT;
 
 -- Índice para búsqueda por group_id (usado por el webhook)
 CREATE INDEX IF NOT EXISTS idx_tenants_whatsapp_group 
