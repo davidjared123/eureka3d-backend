@@ -18,6 +18,31 @@ const GRUPO_PERMITIDO = process.env.WHATSAPP_GROUP_ID || null;
 // Cache de tenants para evitar consultas repetidas
 const tenantCache = new Map();
 
+// Cache de IDs de mensajes enviados por el bot (para evitar loops)
+// Se limpian automáticamente después de 60 segundos
+const sentMessagesCache = new Set();
+
+/**
+ * Registra un mensaje como enviado por el bot
+ * @param {string} messageId 
+ */
+export function markMessageAsSent(messageId) {
+    if (messageId) {
+        sentMessagesCache.add(messageId);
+        // Limpiar después de 60 segundos
+        setTimeout(() => sentMessagesCache.delete(messageId), 60000);
+    }
+}
+
+/**
+ * Verifica si un mensaje fue enviado por el bot
+ * @param {string} messageId 
+ * @returns {boolean}
+ */
+export function isMessageFromBot(messageId) {
+    return sentMessagesCache.has(messageId);
+}
+
 // Comandos para confirmar
 const COMANDOS_CONFIRMAR = ['sí', 'si', 'yes', 'confirmar', 'dale', 'ok', 'listo', 's'];
 
@@ -81,6 +106,13 @@ export async function handleEvolutionWebhook(req, res) {
             } else {
                 console.log(`[Webhook] ❌ No se encontró tenant para este grupo`);
                 return res.status(200).json({ processed: false, reason: 'Tenant no encontrado' });
+            }
+
+            // Verificar si este mensaje fue enviado por el bot (para evitar loops)
+            const messageId = message.key?.id;
+            if (messageId && isMessageFromBot(messageId)) {
+                console.log('[Webhook] ⏭️ Ignorando mensaje enviado por el bot');
+                return res.status(200).json({ processed: false, reason: 'Mensaje del bot' });
             }
 
             // En multi-tenant, permitir mensajes del dueño (fromMe) en el grupo configurado

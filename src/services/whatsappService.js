@@ -1,5 +1,6 @@
 import axios from 'axios';
 import config from '../config/index.js';
+import { markMessageAsSent } from '../controllers/webhookController.js';
 
 /**
  * Servicio para enviar mensajes a WhatsApp via Evolution API
@@ -30,6 +31,12 @@ export async function enviarMensaje(instanceName, chatId, texto) {
                 timeout: 30000,
             }
         );
+
+        // Registrar el ID del mensaje para evitar procesarlo como webhook
+        const messageId = response.data?.key?.id;
+        if (messageId) {
+            markMessageAsSent(messageId);
+        }
 
         console.log(`[WhatsApp] Mensaje enviado a ${chatId}`);
         return response.data;
