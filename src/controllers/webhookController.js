@@ -182,11 +182,44 @@ async function procesarMensaje({ chatId, texto, tieneImagen, message, instanceNa
     const textoLower = texto.toLowerCase().trim();
 
     // ============================================
-    // CASO ESPECIAL: Comando #info para consultas
+    // COMANDOS - Soportan # y ! como prefijo
     // ============================================
-    if (textoLower.startsWith('#info')) {
-        const consulta = texto.replace(/#info/i, '').trim();
+
+    // Comando #info / !info - Consultar pedidos
+    if (textoLower.startsWith('#info') || textoLower.startsWith('!info')) {
+        const consulta = texto.replace(/[#!]info/i, '').trim();
         return await procesarConsultaInfo(consulta, trelloServiceInstance);
+    }
+
+    // Comando #ayuda / !ayuda / #help / !help - Mostrar comandos disponibles
+    if (textoLower.match(/^[#!](ayuda|help)$/)) {
+        return `📋 *Comandos disponibles:*
+
+🔍 *#info* o *!info*
+   Ver todos los pedidos pendientes
+
+🔍 *#info hoy* o *!info hoy*
+   Ver pedidos para entregar hoy
+
+🔍 *#info semana* o *!info semana*
+   Ver pedidos de esta semana
+
+✅ *sí* / *confirmar* / *ok*
+   Confirmar el pedido actual
+
+❌ *no* / *cancelar*
+   Cancelar el pedido actual
+
+✏️ *otro*
+   Cambiar el título sugerido
+
+📌 Solo envía un mensaje en el grupo para iniciar un nuevo pedido.`;
+    }
+
+    // Comando #cancelar / !cancelar - Cancelar sesión actual
+    if (textoLower.match(/^[#!]cancelar$/)) {
+        pedidoSession.finalizarSesion(chatId);
+        return '❌ Sesión cancelada. Envía un nuevo mensaje para iniciar un pedido.';
     }
 
     // Verificar si hay sesión activa
