@@ -83,10 +83,10 @@ export async function handleEvolutionWebhook(req, res) {
                 return res.status(200).json({ processed: false, reason: 'Tenant no encontrado' });
             }
 
-            // En multi-tenant, ignorar mensajes propios
+            // En multi-tenant, permitir mensajes del dueño (fromMe) en el grupo configurado
+            // Esto permite que el dueño del negocio también pueda crear pedidos
             if (message.key?.fromMe) {
-                console.log('[Webhook] ⏭️ Ignorando mensaje propio');
-                return res.status(200).json({ processed: false, reason: 'Mensaje propio' });
+                console.log('[Webhook] 📝 Mensaje del dueño - procesando normalmente');
             }
         } else {
             // Modo single-tenant: usar env vars
