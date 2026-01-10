@@ -174,6 +174,55 @@ export async function PUT(request) {
             return NextResponse.json({ error: 'ID del grupo requerido' }, { status: 400 });
         }
 
+        // Obtener tenant para el instance name
+        const { data: tenant } = await supabase
+            .from('tenants')
+            .select('evolution_instance_name, business_name')
+            .eq('user_id', user.id)
+            .single();
+
+        // Actualizar descripción del grupo con comandos del bot
+        if (tenant?.evolution_instance_name) {
+            const botDescription = `🤖 *Bot de Pedidos - ${tenant.business_name || 'Eureka3D'}*
+
+📋 *COMANDOS DISPONIBLES:*
+
+🔍 #info → Ver pedidos pendientes
+🔍 #info hoy → Pedidos para hoy
+🔍 #info semana → Pedidos de la semana
+❓ #ayuda → Ver esta lista
+❌ #cancelar → Cancelar pedido actual
+
+📝 *CÓMO CREAR UN PEDIDO:*
+1️⃣ Envía un mensaje describiendo el pedido
+2️⃣ El bot te sugerirá un título
+3️⃣ Confirma con "sí" o escribe "otro" para cambiarlo
+4️⃣ Indica la fecha de entrega
+5️⃣ ¡Listo! Se crea en Trello
+
+💡 También puedes enviar imágenes de referencia`;
+
+            try {
+                const fullGroupId = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`;
+
+                await fetch(`${EVOLUTION_API_URL}/group/updateGroupDescription/${tenant.evolution_instance_name}`, {
+                    method: 'PUT',
+                    headers: {
+                        'apikey': EVOLUTION_API_KEY,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        groupJid: fullGroupId,
+                        description: botDescription,
+                    }),
+                });
+                console.log('[API WhatsApp] Group description updated');
+            } catch (descError) {
+                console.error('[API WhatsApp] Failed to update group description:', descError);
+                // No lanzar error, continuar con el flujo
+            }
+        }
+
         // Guardar en tenant
         const { error } = await supabase
             .from('tenants')
